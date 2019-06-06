@@ -27,6 +27,20 @@ def make_scan(input, output):
         'identificationRemarks', 'scientificName', 'identificationQualifier',
     ]
 
+    valid_first_species_terms = (
+        'Aedeomyia', 'Aedes', 'Aedimorphus', 'Anopheles', 'Catageiomyia', 'Ceratopogonidae',
+        'Chironomidae', 'Coquillettidia', 'Culex', 'Culicidae', 'Culicinae', 'Culiciomyia',
+        'Culicoides', 'Culiseta', 'Eumelanomyia', 'Lophoceraomyia', 'Mansonia', 'Mimomyia',
+        'Oculeomyia', 'Orthopodomyia', 'Phlebotomus', 'Psorophora', 'Sergentomyia', 'Simuliidae',
+        'Toxorhynchites', 'Uranotaenia', 'Wyeomyia', 'Avaritia'
+    )
+
+    subspecies_terms = ('japonicus', 'arabiensis', 'vexans', 'S', 'T')
+
+    group_terms = ('morphological', 'group', 'complex', 'sensu', 'lato', 'AD', 'BCE', 'subgroup')
+
+    countries = ('United States', 'United Kingdom', 'Uganda')
+
     temp = output + '.temp'
 
     try:
@@ -63,16 +77,7 @@ def make_scan(input, output):
                 if species_terms[0] == 'genus' or species_terms[0] == 'subgenus':
                     del species_terms[0]
 
-                valid_first_terms = (
-                    'Aedeomyia', 'Aedes', 'Aedimorphus', 'Anopheles', 'Catageiomyia',
-                    'Ceratopogonidae', 'Chironomidae', 'Coquillettidia', 'Culex', 'Culicidae',
-                    'Culicinae', 'Culiciomyia', 'Culicoides', 'Culiseta', 'Eumelanomyia',
-                    'Lophoceraomyia', 'Mansonia', 'Mimomyia', 'Oculeomyia', 'Orthopodomyia',
-                    'Phlebotomus', 'Psorophora', 'Sergentomyia', 'Simuliidae', 'Toxorhynchites',
-                    'Uranotaenia', 'Wyeomyia', 'Avaritia'
-                )
-
-                if species_terms[0] not in valid_first_terms:
+                if species_terms[0] not in valid_first_species_terms:
                     raise ValueError('Unknown first species term "{}" at {}'
                                      .format(species_terms[0], row['accession']))
 
@@ -82,10 +87,6 @@ def make_scan(input, output):
                     output_row['scientificName'] += ' ' + species_terms[1]
 
                     if len(species_terms) >= 3:
-                        subspecies_terms = ('japonicus', 'arabiensis', 'vexans', 'S', 'T')
-                        group_terms = ('morphological', 'group', 'complex', 'sensu', 'lato', 'AD',
-                                       'BCE', 'subgroup')
-
                         if species_terms[2] in subspecies_terms:
                             output_row['scientificName'] += ' ' + species_terms[2]
                         elif species_terms[2] in group_terms:
@@ -110,8 +111,6 @@ def make_scan(input, output):
                 location_terms = row['geolocations'].strip(')').split(' (')
 
                 output_row['locality'] = location_terms[0]
-
-                countries = ('United States', 'United Kingdom', 'Uganda')
 
                 if len(location_terms) >= 2:
                     if location_terms[1] in countries:
