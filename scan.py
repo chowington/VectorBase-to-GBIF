@@ -102,10 +102,9 @@ def make_scan(input, output):
                             output_row['identificationQualifier'] += ' ' + species_terms[3]
 
                 # Coordinates
-                if row['has_geodata']:
-                    coordinates = row['geo_coords'].split(',')
-                    output_row['decimalLatitude'] = coordinates[0]
-                    output_row['decimalLongitude'] = coordinates[1]
+                coordinates = row['geo_coords'].split(',')
+                output_row['decimalLatitude'] = coordinates[0]
+                output_row['decimalLongitude'] = coordinates[1]
 
                 # Location
                 location_terms = row['geolocations'].strip(')').split(' (')
