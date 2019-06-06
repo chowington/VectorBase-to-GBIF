@@ -37,6 +37,11 @@ def make_scan(input, output):
             temp_csv.writeheader()
 
             for row in input_csv:
+                # Discard the row based on certain conditions
+                if (not row['has_geodata']
+                        or row['collection_protocols'] == 'BG-Counter trap catch'):
+                    continue
+
                 # Directly copy the fields that need no processing
                 output_row = {
                     'occurrenceID': row['accession'],
