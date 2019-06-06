@@ -21,9 +21,9 @@ def parse_args():
 
 def make_scan(input, output):
     output_rows = [
-        'occurrenceID', 'catalogNumber', 'dataGeneralizations', 'individualCount', 'sex', 'lifeStage',
-        'references', 'eventDate', 'verbatimEventDate', 'samplingProtocol', 'country',
-        'stateProvince', 'locality', 'decimalLatitude', 'decimalLongitude',
+        'occurrenceID', 'catalogNumber', 'dataGeneralizations', 'basisOfRecord', 'individualCount',
+        'sex', 'lifeStage', 'references', 'eventDate', 'verbatimEventDate', 'samplingProtocol',
+        'country', 'stateProvince', 'locality', 'decimalLatitude', 'decimalLongitude',
         'identificationRemarks', 'scientificName', 'identificationQualifier', 'dcterms:license'
     ]
 
@@ -42,11 +42,12 @@ def make_scan(input, output):
                         or row['collection_protocols'] == 'BG-Counter trap catch'):
                     continue
 
-                # Directly copy the fields that need no processing
+                # Directly set the fields that need no processing
                 output_row = {
                     'occurrenceID': row['accession'],
                     'catalogNumber': row['accession'],
                     'dataGeneralizations': row['projects'],
+                    'basisOfRecord': 'HumanObservation',
                     'individualCount': row['sample_size_i'],
                     'sex': row['sex_s'],
                     'lifeStage': row['dev_stages_ss'],
