@@ -24,7 +24,7 @@ def make_scan(input, output):
         'occurrenceID', 'catalogNumber', 'dataGeneralizations', 'basisOfRecord', 'individualCount',
         'sex', 'lifeStage', 'references', 'eventDate', 'verbatimEventDate', 'samplingProtocol',
         'country', 'stateProvince', 'locality', 'decimalLatitude', 'decimalLongitude',
-        'identificationRemarks', 'scientificName', 'identificationQualifier', 'dcterms:license'
+        'identificationRemarks', 'scientificName', 'identificationQualifier',
     ]
 
     temp = output + '.temp'
@@ -55,7 +55,6 @@ def make_scan(input, output):
                     'verbatimEventDate': row['collection_date_range'],
                     'samplingProtocol': row['collection_protocols'],
                     'identificationRemarks': row['protocols'],
-                    'dcterms:license': row['licenses_ss']
                 }
 
                 # Species
