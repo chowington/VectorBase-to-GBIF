@@ -24,7 +24,7 @@ def make_scan(input, output):
         'occurrenceID', 'catalogNumber', 'dataGeneralizations', 'basisOfRecord', 'individualCount',
         'sex', 'lifeStage', 'references', 'eventDate', 'verbatimEventDate', 'samplingProtocol',
         'country', 'stateProvince', 'locality', 'decimalLatitude', 'decimalLongitude',
-        'identificationRemarks', 'scientificName', 'identificationQualifier',
+        'identificationRemarks', 'scientificName', 'identificationQualifier', 'occurrenceRemarks'
     ]
 
     valid_first_species_terms = (
@@ -40,6 +40,22 @@ def make_scan(input, output):
     group_terms = ('morphological', 'group', 'complex', 'sensu', 'lato', 'AD', 'BCE', 'subgroup')
 
     countries = ('United States', 'United Kingdom', 'Uganda')
+
+    valid_provider_tags = (
+        'Anastasia Mosquito Control District Florida',
+        'Marion County Public Health Department Indiana',
+        'Hernando County Florida Mosquito Control', 'Biogents Mosquito Surveillance',
+        'Northwest Mosquito and Vector Control District', 'Collier Mosquito Control District',
+        'Iowa State Mosquito Surveillance', 'Manatee County Florida Mosquito Control',
+        'Cass County Vector Control District', 'Salt Lake City Mosquito Abatement District',
+        'Southern Nevada Health District', 'Entomology Group Pirbright',
+        'Orange County Florida Mosquito Control', 'ICEMR',
+        'Rhode Island Department of Environmental Management',
+        'South Walton County Florida Mosquito Control', 'Toledo Area Sanitary District',
+        'Ada County Weed Pest and Mosquito Abatement'
+    )
+
+    remove_tags = ('abundance', 'viral surveillance')
 
     temp = output + '.temp'
 
@@ -126,6 +142,34 @@ def make_scan(input, output):
 
                 # Date
                 output_row['eventDate'] = row['collection_date'][:10]
+
+                # occurrenceRemarks
+                author_text = generator_text = ''
+                link = 'https://www.vectorbase.org/popbio/map/?view=abnd&zoom_level=11'
+                link += '&center=' + row['geo_coords']
+
+                if row['tags_ss']:
+                    tags = row['tags_ss'].split(';')
+                    tags = [tag for tag in tags if tag not in remove_tags]
+
+                    if len(tags) > 1 or tags[0] not in valid_provider_tags:
+                        raise ValueError('Unexpected tag(s) {} at {}'
+                                         .format(tags, row['accession']))
+
+                    author_text += ' authored by ' + tags[0]
+                    link += '&tag=' + tags[0].replace(' ', '+')
+                else:
+                    link += '&projectID=' + row['projects']
+
+                if row['exp_citations_ss']:
+                    generator_text += (', which includes '
+                                       + '; '.join(row['exp_citations_ss'].split(';')))
+
+                output_row['occurrenceRemarks'] = (
+                    'This record has been curated by VectorBase.org as part of a larger data set{}'
+                    ' which can be seen in context at {}. Please cite VectorBase and the original '
+                    'data generator{}.'.format(author_text, link, generator_text)
+                )
 
                 # Write to output
                 temp_csv.writerow(output_row)
