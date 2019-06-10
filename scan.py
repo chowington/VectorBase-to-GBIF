@@ -5,6 +5,7 @@
 import argparse
 import csv
 import os
+import random
 
 
 def parse_args():
@@ -14,12 +15,22 @@ def parse_args():
 
     parser.add_argument('input', help='The CSV input file.')
     parser.add_argument('output', help='The name of the output file.')
+    parser.add_argument('-s', '--sample', type=float,
+                        help='Output a sample of the input data. Provide a number from 0-100 '
+                             'representing the approximate size of the sample as a percentage of '
+                             'the whole dataset.')
     args = parser.parse_args()
+
+    if args.sample and not (0 <= args.sample <= 100):
+        raise ValueError('Sampling percentage must be between 0 and 100.')
 
     return args
 
 
-def make_scan(input, output):
+def make_scan(input, output, sample=None):
+    if sample:
+        random.seed()
+
     output_rows = [
         'occurrenceID', 'catalogNumber', 'dataGeneralizations', 'basisOfRecord', 'individualCount',
         'sex', 'lifeStage', 'references', 'eventDate', 'verbatimEventDate', 'samplingProtocol',
@@ -67,6 +78,10 @@ def make_scan(input, output):
             temp_csv.writeheader()
 
             for row in input_csv:
+                # If we're sampling, drop the row with some probability
+                if sample is not None and random.random() >= sample/100:
+                    continue
+
                 # Discard the row based on certain conditions
                 if (not row['has_geodata']
                         or row['collection_protocols'] == 'BG-Counter trap catch'):
