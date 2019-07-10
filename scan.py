@@ -7,6 +7,7 @@ import csv
 import os
 import random
 import requests
+import json
 
 
 def parse_args():
@@ -19,6 +20,7 @@ def parse_args():
                         help='Output a sample of the input data. Provide a number from 0-100 '
                              'representing the approximate size of the sample as a percentage of '
                              'the whole dataset.')
+    parser.add_argument('-c', '--use-cached', action='store_true')
     args = parser.parse_args()
 
     if args.sample and not (0 <= args.sample <= 100):
@@ -27,7 +29,7 @@ def parse_args():
     return args
 
 
-def make_scan(output, sample=None):
+def make_scan(output, use_cached=False, sample=None):
     if sample:
         random.seed()
 
@@ -83,7 +85,17 @@ def make_scan(output, sample=None):
         'Rhode Island Department of Environmental Management',
         'South Walton County Florida Mosquito Control', 'Toledo Area Sanitary District',
         'Ada County Weed Pest and Mosquito Abatement',
-        'Marion County Public Health Department, Indiana'
+        'Marion County Public Health Department, Indiana',
+        'Lee County Mosquito Control',
+        'Desplaines Valley Mosquito Abatement',
+        'Anastasia Mosquito Control District, Florida',
+        'Entomology Group, Pirbright',
+        'Ada County Weed, Pest, and Mosquito Abatement'
+    )
+
+    skip_provider_tags = (
+        'Lee County Mosquito Control',
+        'Desplaines Valley Mosquito Abatement'
     )
 
     remove_tags = ('abundance', 'viral surveillance')
@@ -91,24 +103,33 @@ def make_scan(output, sample=None):
     temp = output + '.temp'
 
     try:
-        rows = 5000
+        if not use_cached:
+            rows = 1000000
 
-        url = 'http://localhost:8200/solr/collection1/select'
-        url += '?fl=' + ','.join(solr_fields)
-        url += ('&fq=bundle:pop_sample' +
-                '&fq=has_abundance_data_b:true' +
-                '&fq=has_geodata:true' +
-                '&fq=sample_size_i:%5B1%20TO%20*%5D' +
-                '&fq=site:%22Population%20Biology%22'
-                )
-        url += '&q=*:*'
-        url += '&rows=' + str(rows)
+            url = 'http://localhost:8200/solr/collection1/select'
+            url += '?fl=' + ','.join(solr_fields)
+            url += ('&fq=bundle:pop_sample' +
+                    '&fq=has_abundance_data_b:true' +
+                    '&fq=has_geodata:true' +
+                    '&fq=sample_size_i:%5B1%20TO%20*%5D' +
+                    '&fq=site:%22Population%20Biology%22'
+                    )
+            url += '&q=*:*'
+            url += '&rows=' + str(rows)
 
-        print('Sending request...')
-        response = requests.get(url)
-        print('Done.')
-        response.raise_for_status()
-        js = response.json()
+            print('Sending request...')
+            response = requests.get(url)
+            print('Done.')
+            response.raise_for_status()
+
+            with open('raw_data.json', 'w', newline='') as raw_data_file:
+                raw_data_file.write(response.text)
+
+            response = response.json()
+
+        else:
+            with open('raw_data.json') as raw_data_file:
+                response = json.load(raw_data_file)
 
         with open(temp, 'w', newline='') as temp_file:
             temp_csv = csv.DictWriter(temp_file, output_rows)
@@ -117,13 +138,14 @@ def make_scan(output, sample=None):
 
             i = 0
 
-            for record in js['response']['docs']:
+            for record in response['response']['docs']:
                 defaults = {
                     'projects': [''],
                     'country_s': '',
                     'adm1_s': '',
                     'adm2_s': '',
                     'collection_protocols': [''],
+                    'collection_day_s': '',
                     'collection_date_range': [''],
                     'protocols': [''],
                     'exp_citations_ss': [''],
@@ -132,17 +154,30 @@ def make_scan(output, sample=None):
                     'project_authors_txt': ['']
                 }
 
-                record.update(defaults)
+                defaults.update(record)
+                record = defaults
 
-                print(i)
                 i += 1
+
+                if not i % 1000:
+                    print(i)
 
                 # If we're sampling, drop the row with some probability
                 if sample is not None and random.random() >= sample/100:
                     continue
 
+                tags = []
+
+                if 'tags_ss' in record:
+                    tags = [tag for tag in record['tags_ss'] if tag not in remove_tags]
+
+                    if len(tags) > 1 or tags[0] not in valid_provider_tags:
+                        raise ValueError('Unexpected tag(s) {} at {}'
+                                         .format(tags, record['sample_id_s']))
+
                 # Discard the row based on certain conditions
-                if record['collection_protocols'] == 'BG-Counter trap catch':
+                if (record['collection_protocols'] == 'BG-Counter trap catch'
+                        or (tags and tags[0] in skip_provider_tags)):
                     continue
 
                 # Directly set the fields that need little processing
@@ -154,7 +189,7 @@ def make_scan(output, sample=None):
                     'individualCount': record['sample_size_i'],
                     'sex': record['sex_s'],
                     'lifeStage': ';'.join(record['dev_stages_ss']),
-                    'references': record['exp_citations_ss'],
+                    'references': ';'.join(record['exp_citations_ss']),
                     'recordedBy': ';'.join(record['project_authors_txt']),
                     'verbatimEventDate': ';'.join(record['collection_date_range']),
                     'samplingProtocol': ';'.join(record['collection_protocols']),
@@ -209,13 +244,7 @@ def make_scan(output, sample=None):
                 link = 'https://www.vectorbase.org/popbio/map/?view=abnd&zoom_level=11'
                 link += '&center=' + record['geo_coords']
 
-                if 'tags_ss' in record:
-                    tags = [tag for tag in record['tags_ss'] if tag not in remove_tags]
-
-                    if len(tags) > 1 or tags[0] not in valid_provider_tags:
-                        raise ValueError('Unexpected tag(s) {} at {}'
-                                         .format(tags, record['sample_id_s']))
-
+                if tags:
                     author_text += ' authored by ' + tags[0]
                     link += '&tag=' + tags[0].replace(' ', '+')
                 else:
@@ -223,13 +252,13 @@ def make_scan(output, sample=None):
                         link += '&projectID[]=' + project
 
                 if record['exp_citations_ss']:
-                    generator_text += (', which includes '
+                    generator_text += (', including '
                                        + '; '.join(record['exp_citations_ss']))
 
                 output_row['occurrenceRemarks'] = (
                     'This record has been curated by VectorBase.org as part of a larger data set{}'
                     ' which can be seen in context at {}. Please cite VectorBase and the original '
-                    'data generator{}.'.format(author_text, link, generator_text)
+                    'data generator(s){}.'.format(author_text, link, generator_text)
                 )
 
                 # Write to output
