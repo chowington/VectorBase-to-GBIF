@@ -61,19 +61,31 @@ def make_scan(output, use_cached=False, sample=None):
         'project_authors_txt'
     ]
 
-    valid_first_species_terms = (
+    valid_first_species_terms = {
         'Aedeomyia', 'Aedes', 'Aedimorphus', 'Anopheles', 'Catageiomyia', 'Ceratopogonidae',
         'Chironomidae', 'Coquillettidia', 'Culex', 'Culicidae', 'Culicinae', 'Culiciomyia',
         'Culicoides', 'Culiseta', 'Eumelanomyia', 'Lophoceraomyia', 'Mansonia', 'Mimomyia',
         'Oculeomyia', 'Orthopodomyia', 'Phlebotomus', 'Psorophora', 'Sergentomyia', 'Simuliidae',
-        'Toxorhynchites', 'Uranotaenia', 'Wyeomyia', 'Avaritia'
-    )
+        'Toxorhynchites', 'Uranotaenia', 'Wyeomyia', 'Avaritia',
+        'Lutzomyia',
+        'Melanoconion', # Subgenus of Culex
+        'Ochlerotatus', # Genus
+        'Deinocerites', # Genus
+        'Anophelinae', # Subfamily
+    }
 
-    subspecies_terms = ('japonicus', 'arabiensis', 'vexans', 'S', 'T')
+    subspecies_terms = {
+        'japonicus',
+        'arabiensis',
+        'vexans',
+        'S',
+        'T',
+        'pallens',
+    }
 
-    group_terms = ('morphological', 'group', 'complex', 'sensu', 'lato', 'AD', 'BCE', 'subgroup')
+    group_terms = {'morphological', 'group', 'complex', 'sensu', 'lato', 'AD', 'BCE', 'subgroup'}
 
-    valid_provider_tags = (
+    valid_provider_tags = {
         'Anastasia Mosquito Control District Florida',
         'Marion County Public Health Department Indiana',
         'Hernando County Florida Mosquito Control', 'Biogents Mosquito Surveillance',
@@ -90,185 +102,232 @@ def make_scan(output, use_cached=False, sample=None):
         'Desplaines Valley Mosquito Abatement',
         'Anastasia Mosquito Control District, Florida',
         'Entomology Group, Pirbright',
-        'Ada County Weed, Pest, and Mosquito Abatement'
-    )
-
-    skip_provider_tags = (
+        'Ada County Weed, Pest, and Mosquito Abatement',
         'Lee County Mosquito Control',
-        'Desplaines Valley Mosquito Abatement'
-    )
+        'DesPlaines Valley Mosquito Abatement',
+        'Franklin County Public Health',
+        'Commonwealth Scientific and Industrial Research Organisation',
+        'North Dakota Department of Health',
+        'Tarrant County Public Health Department',
+        'Montana State Mosquito Surveillance',
+        'City of Suffolk Mosquito Control',
+        'Illinois Natural History Survey',
+        'Norfolk County Mosquito Control',
+        'Maryland Department of Agriculture',
+        'Florida Keys Mosquito Control District',
+    }
 
-    remove_tags = ('abundance', 'viral surveillance')
+    skip_provider_tags = set()
+
+    valid_protocols = {
+        'morphological examination',
+        'PCR-based species identification',
+        'by size',
+    }
+
+    skip_projects = {
+        'VBP0000682',
+    }
+
+    remove_tags = {'abundance', 'viral surveillance'}
 
     temp = output + '.temp'
 
-    try:
-        if not use_cached:
-            rows = 1000000
+    if not use_cached:
+        # Rows to request
+        # Must provide a number, so this should be larger than the total
+        # number of rows expected
+        rows = 10000000
 
-            url = 'http://localhost:8200/solr/collection1/select'
-            url += '?fl=' + ','.join(solr_fields)
-            url += ('&fq=bundle:pop_sample' +
-                    '&fq=has_abundance_data_b:true' +
-                    '&fq=has_geodata:true' +
-                    '&fq=sample_size_i:%5B1%20TO%20*%5D' +
-                    '&fq=site:%22Population%20Biology%22'
-                    )
-            url += '&q=*:*'
-            url += '&rows=' + str(rows)
-
-            print('Sending request...')
-            response = requests.get(url)
-            print('Done.')
-            response.raise_for_status()
-
-            with open('raw_data.json', 'w', newline='') as raw_data_file:
-                raw_data_file.write(response.text)
-
-            response = response.json()
-
-        else:
-            with open('raw_data.json') as raw_data_file:
-                response = json.load(raw_data_file)
-
-        with open(temp, 'w', newline='') as temp_file:
-            temp_csv = csv.DictWriter(temp_file, output_rows)
-
-            temp_csv.writeheader()
-
-            i = 0
-
-            for record in response['response']['docs']:
-                defaults = {
-                    'projects': [''],
-                    'country_s': '',
-                    'adm1_s': '',
-                    'adm2_s': '',
-                    'collection_protocols': [''],
-                    'collection_day_s': '',
-                    'collection_date_range': [''],
-                    'protocols': [''],
-                    'exp_citations_ss': [''],
-                    'sex_s': '',
-                    'dev_stages_ss': [''],
-                    'project_authors_txt': ['']
-                }
-
-                defaults.update(record)
-                record = defaults
-
-                i += 1
-
-                if not i % 1000:
-                    print(i)
-
-                # If we're sampling, drop the row with some probability
-                if sample is not None and random.random() >= sample/100:
-                    continue
-
-                tags = []
-
-                if 'tags_ss' in record:
-                    tags = [tag for tag in record['tags_ss'] if tag not in remove_tags]
-
-                    if len(tags) > 1 or tags[0] not in valid_provider_tags:
-                        raise ValueError('Unexpected tag(s) {} at {}'
-                                         .format(tags, record['sample_id_s']))
-
-                # Discard the row based on certain conditions
-                if (record['collection_protocols'] == 'BG-Counter trap catch'
-                        or (tags and tags[0] in skip_provider_tags)):
-                    continue
-
-                # Directly set the fields that need little processing
-                output_row = {
-                    'occurrenceID': record['sample_id_s'],
-                    'catalogNumber': record['sample_id_s'],
-                    'dataGeneralizations': ';'.join(record['projects']),
-                    'basisOfRecord': 'HumanObservation',
-                    'individualCount': record['sample_size_i'],
-                    'sex': record['sex_s'],
-                    'lifeStage': ';'.join(record['dev_stages_ss']),
-                    'references': ';'.join(record['exp_citations_ss']),
-                    'recordedBy': ';'.join(record['project_authors_txt']),
-                    'verbatimEventDate': ';'.join(record['collection_date_range']),
-                    'samplingProtocol': ';'.join(record['collection_protocols']),
-                    'identificationRemarks': ';'.join(record['protocols']),
-                }
-
-                # Species
-                species_terms = record['species'][0].split()
-
-                if species_terms[0] == 'genus' or species_terms[0] == 'subgenus':
-                    del species_terms[0]
-
-                if species_terms[0] not in valid_first_species_terms:
-                    raise ValueError('Unknown first species term "{}" at {}'
-                                     .format(species_terms[0], record['sample_id_s']))
-
-                output_row['scientificName'] = species_terms[0]
-
-                if len(species_terms) >= 2:
-                    output_row['scientificName'] += ' ' + species_terms[1]
-
-                    if len(species_terms) >= 3:
-                        if species_terms[2] in subspecies_terms:
-                            output_row['scientificName'] += ' ' + species_terms[2]
-                        elif species_terms[2] in group_terms:
-                            output_row['identificationQualifier'] = species_terms[2]
-                        else:
-                            ValueError('Unknown third species term "{}" at {}'
-                                       .format(species_terms[2], record['sample_id_s']))
-
-                        if len(species_terms) == 4:
-                            if 'identificationQualifier' not in output_row:
-                                output_row['identificationQualifier'] = ''
-
-                            output_row['identificationQualifier'] += ' ' + species_terms[3]
-
-                # Coordinates
-                coordinates = record['geo_coords'].split(',')
-                output_row['decimalLatitude'] = coordinates[0]
-                output_row['decimalLongitude'] = coordinates[1]
-
-                # Location
-                output_row['country'] = record['country_s'].split(' (')[0]
-                output_row['stateProvince'] = record['adm1_s'].split(' (')[0]
-                output_row['locality'] = record['adm2_s'].split(' (')[0]
-
-                # Date
-                output_row['eventDate'] = record['collection_day_s'][:10]
-
-                # occurrenceRemarks
-                author_text = generator_text = ''
-                link = 'https://www.vectorbase.org/popbio/map/?view=abnd&zoom_level=11'
-                link += '&center=' + record['geo_coords']
-
-                if tags:
-                    author_text += ' authored by ' + tags[0]
-                    link += '&tag=' + tags[0].replace(' ', '+')
-                else:
-                    for project in record['projects']:
-                        link += '&projectID[]=' + project
-
-                if record['exp_citations_ss']:
-                    generator_text += (', including '
-                                       + '; '.join(record['exp_citations_ss']))
-
-                output_row['occurrenceRemarks'] = (
-                    'This record has been curated by VectorBase.org as part of a larger data set{}'
-                    ' which can be seen in context at {}. Please cite VectorBase and the original '
-                    'data generator(s){}.'.format(author_text, link, generator_text)
+        url = 'https://solr-mapveu-prod.local.apidb.org:8443/solr/vb_popbio/select'
+        url += '?fl=' + ','.join(solr_fields)
+        url += ('&fq=bundle:pop_sample' +
+                '&fq=has_abundance_data_b:true' +
+                '&fq=has_geodata:true' +
+                '&fq=sample_size_i:%5B1%20TO%20*%5D' +
+                '&fq=site:%22Population%20Biology%22'
                 )
+        url += '&q=*:*'
+        url += '&rows=' + str(rows)
 
-                # Write to output
-                temp_csv.writerow(output_row)
+        print('Sending request...')
+        response = requests.get(url)
+        print('Done.')
+        response.raise_for_status()
 
+        with open('raw_data.json', 'w', newline='') as raw_data_file:
+            raw_data_file.write(response.text)
+
+        response = response.json()
+
+    else:
+        print('Loading raw data into memory...')
+        with open('raw_data.json') as raw_data_file:
+            response = json.load(raw_data_file)
+        print('Done.')
+
+    problems = []
+    problem_tags = set()
+    problem_first_species_terms = set()
+    problem_third_species_terms = set()
+
+    with open(temp, 'w', newline='') as temp_file:
+        temp_csv = csv.DictWriter(temp_file, output_rows)
+
+        temp_csv.writeheader()
+
+        i = 0
+
+        for record in response['response']['docs']:
+            defaults = {
+                'projects': [''],
+                'country_s': '',
+                'adm1_s': '',
+                'adm2_s': '',
+                'collection_protocols': [''],
+                'collection_day_s': '',
+                'collection_date_range': [''],
+                'protocols': [''],
+                'exp_citations_ss': [''],
+                'sex_s': '',
+                'dev_stages_ss': [''],
+                'project_authors_txt': ['']
+            }
+
+            defaults.update(record)
+            record = defaults
+
+            i += 1
+
+            if not i % 10000:
+                print(i)
+
+            # If we're sampling, drop the row with some probability
+            if sample is not None and random.random() >= sample/100:
+                continue
+
+            tags = []
+
+            if 'tags_ss' in record:
+                tags = [tag for tag in record['tags_ss'] if tag not in remove_tags]
+
+                if len(tags) > 1 or tags[0] not in valid_provider_tags:
+                    tags_text = ','.join(tags)
+                    if tags_text not in problem_tags:
+                        problem_tags.add(tags_text)
+                        problems.append('Unexpected tag(s) {} at {}'
+                            .format(tags, record['sample_id_s']))
+
+            # Discard the row based on certain conditions
+            if ('BG-Counter trap catch' in record['collection_protocols']
+                    or (tags and tags[0] in skip_provider_tags)
+                    or any(s in skip_projects for s in record['projects'])):
+                continue
+
+            # Directly set the fields that need little processing
+            output_row = {
+                'occurrenceID': record['sample_id_s'],
+                'catalogNumber': record['sample_id_s'],
+                'dataGeneralizations': ';'.join(record['projects']),
+                'basisOfRecord': 'HumanObservation',
+                'individualCount': record['sample_size_i'],
+                'sex': record['sex_s'],
+                'lifeStage': ';'.join(record['dev_stages_ss']),
+                'references': ';'.join(record['exp_citations_ss']),
+                'recordedBy': ';'.join(record['project_authors_txt']),
+                'verbatimEventDate': ';'.join(record['collection_date_range']),
+                'samplingProtocol': ';'.join(record['collection_protocols']),
+            }
+
+            # identificationRemarks
+            output_row['identificationRemarks'] = ';'.join(
+                [s for s in record['protocols'] if s in valid_protocols]
+            )
+
+            # Species
+            species_terms = record['species'][0].split()
+            first_species_term = species_terms[0]
+
+            if first_species_term == 'genus' or first_species_term == 'subgenus':
+                del species_terms[0]
+                first_species_term = species_terms[0]
+
+            if first_species_term not in valid_first_species_terms:
+                if first_species_term not in problem_first_species_terms:
+                    problem_first_species_terms.add(first_species_term)
+                    problems.append('Unknown first species term "{}" at {}'
+                        .format(first_species_term, record['sample_id_s']))
+
+            output_row['scientificName'] = first_species_term
+
+            if len(species_terms) >= 2:
+                output_row['scientificName'] += ' ' + species_terms[1]
+
+                if len(species_terms) >= 3:
+                    third_species_term = species_terms[2]
+                    if third_species_term in subspecies_terms:
+                        output_row['scientificName'] += ' ' + third_species_term
+                    elif third_species_term in group_terms:
+                        output_row['identificationQualifier'] = third_species_term
+                    else:
+                        if third_species_term not in problem_third_species_terms:
+                            problem_third_species_terms.add(third_species_term)
+                            problems.append('Unknown third species term "{}" at {}'
+                                .format(third_species_term, record['sample_id_s']))
+
+                    if len(species_terms) == 4:
+                        if 'identificationQualifier' not in output_row:
+                            output_row['identificationQualifier'] = ''
+                        else:
+                            output_row['identificationQualifier'] += ' '
+
+                        output_row['identificationQualifier'] += species_terms[3]
+
+            # Coordinates
+            coordinates = record['geo_coords'].split(',')
+            output_row['decimalLatitude'] = coordinates[0]
+            output_row['decimalLongitude'] = coordinates[1]
+
+            # Location
+            output_row['country'] = record['country_s'].split(' (')[0]
+            output_row['stateProvince'] = record['adm1_s'].split(' (')[0]
+            output_row['locality'] = record['adm2_s'].split(' (')[0]
+
+            # Date
+            output_row['eventDate'] = record['collection_day_s'][:10]
+
+            # occurrenceRemarks
+            author_text = generator_text = ''
+            link = 'https://vectorbase.org/popbio-map/web/?view=abnd&zoom_level=11'
+            link += '&center=' + record['geo_coords']
+
+            if tags:
+                author_text += ' authored by ' + tags[0]
+                link += '&tag=' + tags[0].replace(' ', '+')
+            else:
+                for project in record['projects']:
+                    link += '&projectID[]=' + project
+
+            if record['exp_citations_ss'][0]:
+                generator_text += (', including '
+                    + '; '.join(record['exp_citations_ss']))
+
+            output_row['occurrenceRemarks'] = (
+                'This record has been curated by VectorBase.org as part of a larger data set{}'
+                ' which can be seen in context at {}. Please cite VectorBase and the original '
+                'data generator(s){}.'.format(author_text, link, generator_text)
+            )
+
+            # Write to output
+            temp_csv.writerow(output_row)
+
+    if problems:
+        print('\nData problems:')
+        print('\n'.join(problems))
+        print('\nData problems found. Exiting.')
+    else:
         os.replace(temp, output)
-
-    except ValueError:
-        os.remove(temp)
-        raise
+        print('Success!')
 
 
 if __name__ == '__main__':
