@@ -204,16 +204,21 @@ def parse_args():
         description="Transforms a VectorBase search export file to SCAN DwC format."
     )
 
-    parser.add_argument("output", help="The name of the output file.")
+    parser.add_argument("output", help="the name of the output file")
+    parser.add_argument(
+        "-c",
+        "--use-cached",
+        action="store_true",
+        help="use the previously-generated raw_data.json file instead of requesting new data from Solr",
+    )
     parser.add_argument(
         "-s",
         "--sample",
         type=float,
-        help="Output a sample of the input data. Provide a number from 0-100 "
+        help="output a sample of the input data. Provide a number from 0-100 "
         "representing the approximate size of the sample as a percentage of "
-        "the whole dataset.",
+        "the whole dataset",
     )
-    parser.add_argument("-c", "--use-cached", action="store_true")
     args = parser.parse_args()
 
     if args.sample and not (0 <= args.sample <= 100):
