@@ -61,6 +61,11 @@ def make_scan(output, use_cached=False, sample=None):
         'project_authors_txt'
     ]
 
+    transform_species_terms = {
+        'Anopheles gambiae x Anopheles coluzzii': 'Anopheles gambiae sensu lato',
+        'dirus species complex': 'Anopheles dirus complex',
+    }
+
     valid_first_species_terms = {
         'Aedeomyia', 'Aedes', 'Aedimorphus', 'Anopheles', 'Catageiomyia', 'Ceratopogonidae',
         'Chironomidae', 'Coquillettidia', 'Culex', 'Culicidae', 'Culicinae', 'Culiciomyia',
@@ -72,6 +77,11 @@ def make_scan(output, use_cached=False, sample=None):
         'Ochlerotatus', # Genus
         'Deinocerites', # Genus
         'Anophelinae', # Subfamily
+        'Amblyomma',
+        'Dermacentor',
+        'Ixodes',
+        'Rhipicephalus',
+        'Armigeres',
     }
 
     subspecies_terms = {
@@ -115,6 +125,7 @@ def make_scan(output, use_cached=False, sample=None):
         'Norfolk County Mosquito Control',
         'Maryland Department of Agriculture',
         'Florida Keys Mosquito Control District',
+        'Volusia County Mosquito Control',
     }
 
     skip_provider_tags = set()
@@ -125,9 +136,7 @@ def make_scan(output, use_cached=False, sample=None):
         'by size',
     }
 
-    skip_projects = {
-        'VBP0000682',
-    }
+    skip_projects = set()
 
     remove_tags = {'abundance', 'viral surveillance'}
 
@@ -211,7 +220,7 @@ def make_scan(output, use_cached=False, sample=None):
             if 'tags_ss' in record:
                 tags = [tag for tag in record['tags_ss'] if tag not in remove_tags]
 
-                if len(tags) > 1 or tags[0] not in valid_provider_tags:
+                if len(tags) > 0 and (len(tags) > 1 or tags[0] not in valid_provider_tags):
                     tags_text = ','.join(tags)
                     if tags_text not in problem_tags:
                         problem_tags.add(tags_text)
@@ -245,7 +254,13 @@ def make_scan(output, use_cached=False, sample=None):
             )
 
             # Species
-            species_terms = record['species'][0].split()
+            species_string = record['species'][0]
+
+            if (species_string in transform_species_terms):
+                species_string = transform_species_terms[species_string]
+
+            species_terms = species_string.split()
+
             first_species_term = species_terms[0]
 
             if first_species_term == 'genus' or first_species_term == 'subgenus':
