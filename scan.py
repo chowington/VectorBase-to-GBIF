@@ -10,6 +10,193 @@ import requests
 import json
 
 
+# Configuration
+
+# It's safer to use dev if the data is up-to-date
+solr_url = "https://solr-mapveu-dev.local.apidb.org:8443/solr/vb_popbio/select"
+# solr_url = "https://solr-mapveu-prod.local.apidb.org:8443/solr/vb_popbio/select"
+
+# Rows to request
+# Must provide a number, so this should be larger than the total
+# number of rows expected
+rows = 10000000
+
+# Rows to request from Solr
+solr_fields = [
+    "sample_id_s",
+    "projects",
+    "species",
+    "geo_coords",
+    "country_s",
+    "adm1_s",
+    "adm2_s",
+    "collection_protocols",
+    "collection_day_s",
+    "collection_date_range",
+    "protocols",
+    "sample_size_i",
+    "exp_citations_ss",
+    "tags_ss",
+    "sex_s",
+    "dev_stages_ss",
+    "project_authors_txt",
+]
+
+# Rows that will appear in the output CSV
+output_rows = [
+    "occurrenceID",
+    "catalogNumber",
+    "dataGeneralizations",
+    "basisOfRecord",
+    "individualCount",
+    "sex",
+    "lifeStage",
+    "references",
+    "recordedBy",
+    "eventDate",
+    "verbatimEventDate",
+    "samplingProtocol",
+    "country",
+    "stateProvince",
+    "locality",
+    "decimalLatitude",
+    "decimalLongitude",
+    "identificationRemarks",
+    "scientificName",
+    "identificationQualifier",
+    "occurrenceRemarks",
+]
+
+# Species strings to transform to other strings
+transform_species_strings = {
+    "Anopheles gambiae x Anopheles coluzzii": "Anopheles gambiae sensu lato",
+    "dirus species complex": "Anopheles dirus complex",
+}
+
+# The first species term must appear in this set
+valid_first_species_terms = {
+    "Aedeomyia",
+    "Aedes",
+    "Aedimorphus",
+    "Anopheles",
+    "Catageiomyia",
+    "Ceratopogonidae",
+    "Chironomidae",
+    "Coquillettidia",
+    "Culex",
+    "Culicidae",
+    "Culicinae",
+    "Culiciomyia",
+    "Culicoides",
+    "Culiseta",
+    "Eumelanomyia",
+    "Lophoceraomyia",
+    "Mansonia",
+    "Mimomyia",
+    "Oculeomyia",
+    "Orthopodomyia",
+    "Phlebotomus",
+    "Psorophora",
+    "Sergentomyia",
+    "Simuliidae",
+    "Toxorhynchites",
+    "Uranotaenia",
+    "Wyeomyia",
+    "Avaritia",
+    "Lutzomyia",
+    "Melanoconion",  # Subgenus of Culex
+    "Ochlerotatus",  # Genus
+    "Deinocerites",  # Genus
+    "Anophelinae",  # Subfamily
+    "Amblyomma",
+    "Dermacentor",
+    "Ixodes",
+    "Rhipicephalus",
+    "Armigeres",
+}
+
+# The third species term must appear in one of the following two sets
+subspecies_terms = {
+    "japonicus",
+    "arabiensis",
+    "vexans",
+    "S",
+    "T",
+    "pallens",
+}
+
+group_terms = {
+    "morphological",
+    "group",
+    "complex",
+    "sensu",
+    "lato",
+    "AD",
+    "BCE",
+    "subgroup",
+}
+
+# Tags to remove from the tags list
+remove_tags = {"abundance", "viral surveillance"}
+
+# The provider tag must appear in this set
+valid_provider_tags = {
+    "Anastasia Mosquito Control District Florida",
+    "Marion County Public Health Department Indiana",
+    "Hernando County Florida Mosquito Control",
+    "Biogents Mosquito Surveillance",
+    "Northwest Mosquito and Vector Control District",
+    "Collier Mosquito Control District",
+    "Iowa State Mosquito Surveillance",
+    "Manatee County Florida Mosquito Control",
+    "Cass County Vector Control District",
+    "Salt Lake City Mosquito Abatement District",
+    "Southern Nevada Health District",
+    "Entomology Group Pirbright",
+    "Orange County Florida Mosquito Control",
+    "ICEMR",
+    "Rhode Island Department of Environmental Management",
+    "South Walton County Florida Mosquito Control",
+    "Toledo Area Sanitary District",
+    "Ada County Weed Pest and Mosquito Abatement",
+    "Marion County Public Health Department, Indiana",
+    "Lee County Mosquito Control",
+    "Desplaines Valley Mosquito Abatement",
+    "Anastasia Mosquito Control District, Florida",
+    "Entomology Group, Pirbright",
+    "Ada County Weed, Pest, and Mosquito Abatement",
+    "Lee County Mosquito Control",
+    "DesPlaines Valley Mosquito Abatement",
+    "Franklin County Public Health",
+    "Commonwealth Scientific and Industrial Research Organisation",
+    "North Dakota Department of Health",
+    "Tarrant County Public Health Department",
+    "Montana State Mosquito Surveillance",
+    "City of Suffolk Mosquito Control",
+    "Illinois Natural History Survey",
+    "Norfolk County Mosquito Control",
+    "Maryland Department of Agriculture",
+    "Florida Keys Mosquito Control District",
+    "Volusia County Mosquito Control",
+}
+
+# Skip records with any of these provider tags
+skip_provider_tags = set()
+
+# Collection protocols must appear in this set
+valid_protocols = {
+    "morphological examination",
+    "PCR-based species identification",
+    "by size",
+}
+
+# Skip records with any of these collection protocols
+skip_protocols = {"BG-Counter trap catch"}
+
+# IDs of projects to skip
+skip_projects = set()
+
+
 def parse_args():
     """Parse the command line arguments and return an args namespace."""
 
@@ -39,177 +226,10 @@ def make_scan(output, use_cached=False, sample=None):
     if sample:
         random.seed()
 
-    output_rows = [
-        "occurrenceID",
-        "catalogNumber",
-        "dataGeneralizations",
-        "basisOfRecord",
-        "individualCount",
-        "sex",
-        "lifeStage",
-        "references",
-        "recordedBy",
-        "eventDate",
-        "verbatimEventDate",
-        "samplingProtocol",
-        "country",
-        "stateProvince",
-        "locality",
-        "decimalLatitude",
-        "decimalLongitude",
-        "identificationRemarks",
-        "scientificName",
-        "identificationQualifier",
-        "occurrenceRemarks",
-    ]
-
-    solr_fields = [
-        "sample_id_s",
-        "projects",
-        "species",
-        "geo_coords",
-        "country_s",
-        "adm1_s",
-        "adm2_s",
-        "collection_protocols",
-        "collection_day_s",
-        "collection_date_range",
-        "protocols",
-        "sample_size_i",
-        "exp_citations_ss",
-        "tags_ss",
-        "sex_s",
-        "dev_stages_ss",
-        "project_authors_txt",
-    ]
-
-    transform_species_terms = {
-        "Anopheles gambiae x Anopheles coluzzii": "Anopheles gambiae sensu lato",
-        "dirus species complex": "Anopheles dirus complex",
-    }
-
-    valid_first_species_terms = {
-        "Aedeomyia",
-        "Aedes",
-        "Aedimorphus",
-        "Anopheles",
-        "Catageiomyia",
-        "Ceratopogonidae",
-        "Chironomidae",
-        "Coquillettidia",
-        "Culex",
-        "Culicidae",
-        "Culicinae",
-        "Culiciomyia",
-        "Culicoides",
-        "Culiseta",
-        "Eumelanomyia",
-        "Lophoceraomyia",
-        "Mansonia",
-        "Mimomyia",
-        "Oculeomyia",
-        "Orthopodomyia",
-        "Phlebotomus",
-        "Psorophora",
-        "Sergentomyia",
-        "Simuliidae",
-        "Toxorhynchites",
-        "Uranotaenia",
-        "Wyeomyia",
-        "Avaritia",
-        "Lutzomyia",
-        "Melanoconion",  # Subgenus of Culex
-        "Ochlerotatus",  # Genus
-        "Deinocerites",  # Genus
-        "Anophelinae",  # Subfamily
-        "Amblyomma",
-        "Dermacentor",
-        "Ixodes",
-        "Rhipicephalus",
-        "Armigeres",
-    }
-
-    subspecies_terms = {
-        "japonicus",
-        "arabiensis",
-        "vexans",
-        "S",
-        "T",
-        "pallens",
-    }
-
-    group_terms = {
-        "morphological",
-        "group",
-        "complex",
-        "sensu",
-        "lato",
-        "AD",
-        "BCE",
-        "subgroup",
-    }
-
-    valid_provider_tags = {
-        "Anastasia Mosquito Control District Florida",
-        "Marion County Public Health Department Indiana",
-        "Hernando County Florida Mosquito Control",
-        "Biogents Mosquito Surveillance",
-        "Northwest Mosquito and Vector Control District",
-        "Collier Mosquito Control District",
-        "Iowa State Mosquito Surveillance",
-        "Manatee County Florida Mosquito Control",
-        "Cass County Vector Control District",
-        "Salt Lake City Mosquito Abatement District",
-        "Southern Nevada Health District",
-        "Entomology Group Pirbright",
-        "Orange County Florida Mosquito Control",
-        "ICEMR",
-        "Rhode Island Department of Environmental Management",
-        "South Walton County Florida Mosquito Control",
-        "Toledo Area Sanitary District",
-        "Ada County Weed Pest and Mosquito Abatement",
-        "Marion County Public Health Department, Indiana",
-        "Lee County Mosquito Control",
-        "Desplaines Valley Mosquito Abatement",
-        "Anastasia Mosquito Control District, Florida",
-        "Entomology Group, Pirbright",
-        "Ada County Weed, Pest, and Mosquito Abatement",
-        "Lee County Mosquito Control",
-        "DesPlaines Valley Mosquito Abatement",
-        "Franklin County Public Health",
-        "Commonwealth Scientific and Industrial Research Organisation",
-        "North Dakota Department of Health",
-        "Tarrant County Public Health Department",
-        "Montana State Mosquito Surveillance",
-        "City of Suffolk Mosquito Control",
-        "Illinois Natural History Survey",
-        "Norfolk County Mosquito Control",
-        "Maryland Department of Agriculture",
-        "Florida Keys Mosquito Control District",
-        "Volusia County Mosquito Control",
-    }
-
-    skip_provider_tags = set()
-
-    valid_protocols = {
-        "morphological examination",
-        "PCR-based species identification",
-        "by size",
-    }
-
-    skip_projects = set()
-
-    remove_tags = {"abundance", "viral surveillance"}
-
     temp = output + ".temp"
 
     if not use_cached:
-        # Rows to request
-        # Must provide a number, so this should be larger than the total
-        # number of rows expected
-        rows = 10000000
-
-        url = "https://solr-mapveu-prod.local.apidb.org:8443/solr/vb_popbio/select"
+        url = solr_url
         url += "?fl=" + ",".join(solr_fields)
         url += (
             "&fq=bundle:pop_sample"
@@ -296,8 +316,8 @@ def make_scan(output, use_cached=False, sample=None):
 
             # Discard the row based on certain conditions
             if (
-                "BG-Counter trap catch" in record["collection_protocols"]
-                or (tags and tags[0] in skip_provider_tags)
+                (tags and tags[0] in skip_provider_tags)
+                or any(s in skip_protocols for s in record["collection_protocols"])
                 or any(s in skip_projects for s in record["projects"])
             ):
                 continue
@@ -325,8 +345,8 @@ def make_scan(output, use_cached=False, sample=None):
             # Species
             species_string = record["species"][0]
 
-            if species_string in transform_species_terms:
-                species_string = transform_species_terms[species_string]
+            if species_string in transform_species_strings:
+                species_string = transform_species_strings[species_string]
 
             species_terms = species_string.split()
 
